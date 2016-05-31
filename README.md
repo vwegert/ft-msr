@@ -9,7 +9,7 @@ The project is being documented with a series of YouTube Videos:
 1. [Part 1: Big Picture, Big Plans](https://www.youtube.com/watch?v=ozQ6llI5t9o)
 2. [Part 2: Hardware](https://www.youtube.com/watch?v=QhO6QhTORs8)
 3. [Part 3: Robo/Photon Interface](https://www.youtube.com/watch?v=AiOt8bNfHYQ)
-4. [Part 4: Robo Interface Programming](https://www.youtube.com/watch?v=XXXXTODOXXXX)
+4. [Part 4: Robo Interface Programming](https://youtu.be/WUWeH45islI)
 
 There's also a [playlist](https://www.youtube.com/playlist?list=PLqGbvyFQijidA8ByaTF4ljXxS-8kRFsRs) available.
 
