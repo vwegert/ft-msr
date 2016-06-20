@@ -108,13 +108,15 @@ int state = STATE_READY;
 
 // ===== cloud function signatures and return values ==========================
 
-int cfSetInputCheckInterval(String interval);
-int cfInitialize(String dummy);   // re-initialize the robot
-int cfPickup(String dummy);       // take a piece from the input slot
-int cfDrop(String location);      // drop a piece into an output slot
-int cfStore(String location);     // store a piece in a bin
-int cfRetrieve(String location);  // retrieve a piece from a bin
-int cfCheckColor(String dummy);   // determine the color of the current piece
+int cfSetCheckInterval(String intv); // change the check interval
+int cfEnumerateBins(String dummy);   // sends a list of all storage bins
+int cfEnumerateOuts(String dummy);   // sends a list of all output slots
+int cfInitialize(String dummy);      // re-initialize the robot
+int cfPickup(String dummy);          // take a piece from the input slot
+int cfDrop(String location);         // drop a piece into an output slot
+int cfStore(String location);        // store a piece in a bin
+int cfRetrieve(String location);     // retrieve a piece from a bin
+int cfCheckColor(String dummy);      // determine the color of the current piece
 
 const int RET_OK               = 0;   // anything from here on up will be OK
 const int RET_BUSY             = -1;  // the device is currently busy
@@ -152,7 +154,7 @@ String COLOR_BLACK   = "black";
 String COLOR_UNKNOWN = "unknown";
 
 // input check interval (0 = no checks)
-int cvInputCheckInterval;
+int cvCheckInterval;
 
 // ===== analog-digital input =================================================
 
@@ -259,11 +261,13 @@ void setup() {
   Particle.variable("lastColor",   cvColor);
   Particle.variable("inputOcc",    cvInputOccupied);
   Particle.variable("pincersOcc",  cvPincersOccupied);
-  Particle.variable("inputChkInt", cvInputCheckInterval);
+  Particle.variable("checkInt",    cvCheckInterval);
 
   // register the cloud functions
   // max name len:   123456789012
-  Particle.function("setCheckInt", cfSetInputCheckInterval);
+  Particle.function("setCheckInt", cfSetCheckInterval);
+  Particle.function("enumBins",    cfEnumerateBins);
+  Particle.function("enumOuts",    cfEnumerateOuts);
   Particle.function("initialize",  cfInitialize);
   Particle.function("pickup",      cfPickup);
   Particle.function("drop",        cfDrop);
@@ -277,7 +281,7 @@ void setup() {
   }
 
   // set the default check interval
-  cvInputCheckInterval = INIT_INTERVAL_CHECK_INPUT;
+  cvCheckInterval = INIT_INTERVAL_CHECK_INPUT;
 
   // workaround for buggy RNG initialization
   // see https://community.particle.io/t/random-number-generator-not-initialized/20006
@@ -330,7 +334,7 @@ void loop() {
   }
 
   // Once in a while, check whether there's a piece in the input slot.
-  if (cvInputCheckInterval > 0) {
+  if (cvCheckInterval > 0) {
     updateInputStatus();
   }
 
@@ -339,8 +343,18 @@ void loop() {
 
 // ===== cloud function implementations =======================================
 
-int cfSetInputCheckInterval(String interval) {
-  cvInputCheckInterval = interval.toInt();
+int cfSetCheckInterval(String intv) {
+  cvCheckInterval = intv.toInt();
+}
+
+int cfEnumerateBins(String dummy) {
+  Particle.publish("robo/bins",
+    "A1, A2, A3, A4, B1, B2, B3, B4, C1, C2, C3, C4, D1, D2, D3, D4, E1, E2, E3, E4",
+    3600, PRIVATE);
+}
+
+int cfEnumerateOuts(String dummy) {
+  Particle.publish("robo/outputs", "A, B, C, D, E, F", 3600, PRIVATE);
 }
 
 int cfInitialize(String dummy) {
@@ -529,7 +543,7 @@ void updateInputStatus() {
 
   unsigned long timestamp = millis();
   if ((lastInputCheck > timestamp) ||
-      ((timestamp - lastInputCheck) > cvInputCheckInterval)) {
+      ((timestamp - lastInputCheck) > cvCheckInterval)) {
     if (issueCommand(CMD_CHECK_INPUT) == RET_OK) {
       if (myDigitalRead(R_COL0) || myDigitalRead(R_COL1)) {
         cvInputOccupied = INPUT_OCCUPIED;
