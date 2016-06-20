@@ -92,9 +92,9 @@ const int DELAY_ACK_BUSY   = 300; // ms to sleep after receiving the BUSY signal
 const int DELAY_WAIT_BUSY  = 100; // ms to sleep waiting for command completion
 const int DELAY_WAIT_COLOR = 100; // ms to sleep waiting for command completion
 
-// ===== internal state =======================================================
+// ===== input check ==========================================================
 
-const int INTERVAL_CHECK_INPUT = 5000; // ms to wait between input checks
+const int INIT_INTERVAL_CHECK_INPUT = 5000; // ms to wait between input checks
 unsigned long lastInputCheck = 0;
 
 // ===== internal state =======================================================
@@ -108,6 +108,7 @@ int state = STATE_READY;
 
 // ===== cloud function signatures and return values ==========================
 
+int cfSetInputCheckInterval(String interval);
 int cfInitialize(String dummy);   // re-initialize the robot
 int cfPickup(String dummy);       // take a piece from the input slot
 int cfDrop(String location);      // drop a piece into an output slot
@@ -124,35 +125,34 @@ const int RET_TIMEOUT_CMD      = -5;  // timeout waiting for command execution
 
 // ===== cloud variables and values ===========================================
 
-// busy flag: "true" or "false", depending on the state of robot
-String cvBusy;
-
-const char *BUSY_TRUE  = "true";
-const char *BUSY_FALSE = "false";
+// busy flag: 0 or 1, depending on the state of robot
+int cvBusy;
 
 // the ID of the action that is currently being executed
 int cvActionID;
 
-// input occupied flag: "true" if there's a piece in the input slot
-String cvInputOccupied;
+// input occupied flag: 1 if there's a piece in the input slot
+int cvInputOccupied;
+const int INPUT_EMPTY = 0;
+const int INPUT_OCCUPIED = 1;
 
-const char *INPUT_OCCUPIED  = "true";
-const char *INPUT_EMPTY     = "false";
-
-// pincers occupied flag: "true" if there's a piece in the pincers
-String cvPincersOccupied;
-
-const char *PINCERS_OCCUPIED  = "true";
-const char *PINCERS_EMPTY     = "false";
+// pincers occupied flag: 1 if there's a piece in the pincers
+int cvPincersOccupied;
+const int PINCERS_EMPTY = 0;
+const int PINCERS_OCCUPIED = 1;
 
 // last identified color: "" (empty), "white", "red", "black"
-String cvColor;
+const int CV_COLOR_LENGTH = 10;
+char cvColor[CV_COLOR_LENGTH];
 
-const char *COLOR_EMPTY   = "";
-const char *COLOR_WHITE   = "white";
-const char *COLOR_RED     = "red";
-const char *COLOR_BLACK   = "black";
-const char *COLOR_UNKNOWN = "unknown";
+String COLOR_EMPTY   = "";
+String COLOR_WHITE   = "white";
+String COLOR_RED     = "red";
+String COLOR_BLACK   = "black";
+String COLOR_UNKNOWN = "unknown";
+
+// input check interval (0 = no checks)
+int cvInputCheckInterval;
 
 // ===== analog-digital input =================================================
 
@@ -253,24 +253,31 @@ void setup() {
   pinMode(R_COL1,  INPUT);
 
   // register the cloud variables
-  Particle.variable("busy", cvBusy);
-  Particle.variable("actionID", cvActionID);
-  Particle.variable("lastColor", cvColor);
-  Particle.variable("inputOcc", cvInputOccupied);
-  Particle.variable("pincersOcc", cvPincersOccupied);
+  // max name len:   123456789012
+  Particle.variable("busy",        cvBusy);
+  Particle.variable("actionID",    cvActionID);
+  Particle.variable("lastColor",   cvColor);
+  Particle.variable("inputOcc",    cvInputOccupied);
+  Particle.variable("pincersOcc",  cvPincersOccupied);
+  Particle.variable("inputChkInt", cvInputCheckInterval);
 
   // register the cloud functions
-  Particle.function("initialize", cfInitialize);
-  Particle.function("pickup", cfPickup);
-  Particle.function("drop", cfDrop);
-  Particle.function("store", cfStore);
-  Particle.function("retrieve", cfRetrieve);
-  Particle.function("checkColor", cfCheckColor);
+  // max name len:   123456789012
+  Particle.function("setCheckInt", cfSetInputCheckInterval);
+  Particle.function("initialize",  cfInitialize);
+  Particle.function("pickup",      cfPickup);
+  Particle.function("drop",        cfDrop);
+  Particle.function("store",       cfStore);
+  Particle.function("retrieve",    cfRetrieve);
+  Particle.function("checkColor",  cfCheckColor);
 
   // initialize the history
   for (int i = 0; i < HISTORY_SIZE; i++) {
     history[i] = 0;
   }
+
+  // set the default check interval
+  cvInputCheckInterval = INIT_INTERVAL_CHECK_INPUT;
 
   // workaround for buggy RNG initialization
   // see https://community.particle.io/t/random-number-generator-not-initialized/20006
@@ -289,7 +296,7 @@ void loop() {
 
     // update the state to reflect we're busy now
     state = STATE_BUSY;
-    cvBusy = BUSY_TRUE;
+    cvBusy = 1;
     cvActionID = currentAction;
 
     // send an event to show we're working on something
@@ -316,19 +323,25 @@ void loop() {
     clearQueue();
 
     // reset the state to show we're no longer busy
-    cvBusy = BUSY_FALSE;
+    cvBusy = 0;
     cvActionID = 0;
     currentAction = 0;
     state = STATE_READY;
   }
 
   // Once in a while, check whether there's a piece in the input slot.
-  updateInputStatus();
+  if (cvInputCheckInterval > 0) {
+    updateInputStatus();
+  }
 
   delay(DELAY_MAIN_LOOP);
 }
 
 // ===== cloud function implementations =======================================
+
+int cfSetInputCheckInterval(String interval) {
+  cvInputCheckInterval = interval.toInt();
+}
 
 int cfInitialize(String dummy) {
   return enqueueCommands(CMD_INIT);
@@ -447,31 +460,31 @@ void updateStatusVariables() {
   switch(getLastCommand()) {
     case CMD_INIT:
       cvPincersOccupied = PINCERS_EMPTY;
-      cvColor           = COLOR_EMPTY;
+      COLOR_EMPTY.toCharArray(cvColor, CV_COLOR_LENGTH);
       break;
 
     case CMD_PICKUP:
       if (colorCode > 0) {
         cvPincersOccupied = PINCERS_OCCUPIED;
-        cvColor           = COLOR_UNKNOWN;
+        COLOR_UNKNOWN.toCharArray(cvColor, CV_COLOR_LENGTH);
       } else {
         cvPincersOccupied = PINCERS_EMPTY;
-        cvColor           = COLOR_EMPTY;
+        COLOR_EMPTY.toCharArray(cvColor, CV_COLOR_LENGTH);
       }
       break;
 
     case CMD_STORE:
       cvPincersOccupied = PINCERS_EMPTY;
-      cvColor           = COLOR_EMPTY;
+      COLOR_EMPTY.toCharArray(cvColor, CV_COLOR_LENGTH);
       break;
 
     case CMD_RETRIEVE:
       if (colorCode > 0) {
         cvPincersOccupied = PINCERS_OCCUPIED;
-        cvColor           = COLOR_UNKNOWN;
+        COLOR_UNKNOWN.toCharArray(cvColor, CV_COLOR_LENGTH);
       } else {
         cvPincersOccupied = PINCERS_EMPTY;
-        cvColor           = COLOR_EMPTY;
+        COLOR_EMPTY.toCharArray(cvColor, CV_COLOR_LENGTH);
       }
       break;
 
@@ -479,19 +492,19 @@ void updateStatusVariables() {
       switch(colorCode) {
         case 0:
           cvPincersOccupied = PINCERS_EMPTY;
-          cvColor           = COLOR_EMPTY;
+          COLOR_EMPTY.toCharArray(cvColor, CV_COLOR_LENGTH);
           break;
         case 1:
           cvPincersOccupied = PINCERS_OCCUPIED;
-          cvColor           = COLOR_WHITE;
+          COLOR_WHITE.toCharArray(cvColor, CV_COLOR_LENGTH);
           break;
         case 2:
           cvPincersOccupied = PINCERS_OCCUPIED;
-          cvColor           = COLOR_RED;
+          COLOR_RED.toCharArray(cvColor, CV_COLOR_LENGTH);
           break;
         case 3:
           cvPincersOccupied = PINCERS_OCCUPIED;
-          cvColor           = COLOR_BLACK;
+          COLOR_BLACK.toCharArray(cvColor, CV_COLOR_LENGTH);
           break;
       }
       Particle.publish("robo/diagnostics",
@@ -506,7 +519,7 @@ void updateStatusVariables() {
     case CMD_DROP_E:
     case CMD_DROP_F:
       cvPincersOccupied = PINCERS_EMPTY;
-      cvColor           = COLOR_EMPTY;
+      COLOR_EMPTY.toCharArray(cvColor, CV_COLOR_LENGTH);
       break;
   }
 
@@ -516,7 +529,7 @@ void updateInputStatus() {
 
   unsigned long timestamp = millis();
   if ((lastInputCheck > timestamp) ||
-      ((timestamp - lastInputCheck) > INTERVAL_CHECK_INPUT)) {
+      ((timestamp - lastInputCheck) > cvInputCheckInterval)) {
     if (issueCommand(CMD_CHECK_INPUT) == RET_OK) {
       if (myDigitalRead(R_COL0) || myDigitalRead(R_COL1)) {
         cvInputOccupied = INPUT_OCCUPIED;
