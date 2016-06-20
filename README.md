@@ -18,5 +18,6 @@ There's also a [playlist](https://www.youtube.com/playlist?list=PLqGbvyFQijidA8B
 Please check the README.md files of the sub-projects for further information
 
 1. [ROBO Pro](robo/README.md)
+2. [Spark Photon](photon/README.md)
 
 
