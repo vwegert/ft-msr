@@ -304,19 +304,19 @@ void loop() {
     cvActionID = currentAction;
 
     // send an event to show we're working on something
-    Particle.publish(String::format("robo/action/%d", currentAction),
-      "started", 3600, PRIVATE);
+    Particle.publish("robo/action",
+      String::format("%d started", currentAction), 3600, PRIVATE);
 
     // process the command queue and execute each command
     result = processCommands();
 
     // evaluate the result and send an appropriate event
     if (result < 0) {
-      Particle.publish(String::format("robo/action/%d", currentAction),
-        String::format("failed: %d", result), 3600, PRIVATE);
+      Particle.publish("robo/action",
+        String::format("%d failed: %d", currentAction, result), 3600, PRIVATE);
     } else {
-      Particle.publish(String::format("robo/action/%d", currentAction),
-        "completed", 3600, PRIVATE);
+      Particle.publish("robo/action",
+        String::format("%d completed", currentAction), 3600, PRIVATE);
 
       // depending on the last command, set the cloud variables
       updateStatusVariables();
@@ -345,16 +345,19 @@ void loop() {
 
 int cfSetCheckInterval(String intv) {
   cvCheckInterval = intv.toInt();
+  return cvCheckInterval;
 }
 
 int cfEnumerateBins(String dummy) {
   Particle.publish("robo/bins",
     "A1, A2, A3, A4, B1, B2, B3, B4, C1, C2, C3, C4, D1, D2, D3, D4, E1, E2, E3, E4",
     3600, PRIVATE);
+  return 0;
 }
 
 int cfEnumerateOuts(String dummy) {
   Particle.publish("robo/outputs", "A, B, C, D, E, F", 3600, PRIVATE);
+  return 0;
 }
 
 int cfInitialize(String dummy) {
